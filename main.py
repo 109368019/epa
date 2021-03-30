@@ -16,31 +16,21 @@ def main():
     # print('Finish')
 
     # parameter=================================================
-    # count = 0
-    # outset_frame = 0
-    # cycle_point = 0
-    # channel = 2  # H:0 S:1 V:2
-    # window_length = 10
+    # para.count = 0
+    # para.outset_frame = 0
+    # para.cycle_point = 0
+    # para.channel = 2  # H:0 S:1 V:2
+    # para.window_length = 10
     #
-    # kernel_size1 = (5, 5)
-    # kernel_size2 = (7, 7)cv2.destroyAllWindows()
-    # threshold_value = 0.07
-    # median_blur_value = 3
-    # wait_time = 100
+    # para.kernel_size1 = (5, 5)
+    # para.kernel_size2 = (7, 7)cv2.destroyAllWindows()
+    # para.threshold_value = 0.07
+    # para.median_blur_value = 3
+    # para.wait_time = 100
     # from para import para_4723_0306_150000 as para
-    # count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time, input_video = para.import_para()
+    # para.count, para.outset_frame, para.cycle_point, para.channel, para.window_length, para.kernel_size1, para.kernel_size2, para.threshold_value, para.median_blur_value, para.wait_time, input_video = para.import_para()
 
     para = Parameter()
-    count = para.count
-    outset_frame = para.outset_frame
-    cycle_point = para.cycle_point
-    channel = para.channel
-    window_length = para.window_length
-    kernel_size1 = para.kernel_size1
-    kernel_size2 = para.kernel_size2
-    threshold_value = para.threshold_value
-    median_blur_value = para.median_blur_value
-    wait_time = para.wait_time
 
     video_list = [i for i in os.listdir("./") if (i[-3::] == "mp4")]
     for num, video_name in enumerate(video_list):
@@ -63,56 +53,56 @@ def main():
     frame_count = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
     success, frame = video_capture.read()  # 讀幀
 
-    hsv_window = np.zeros((window_length, 480, 720, 3), np.float32)
+    hsv_window = np.zeros((para.window_length, 480, 720, 3), np.float32)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     
     out1 = cv2.VideoWriter('outputVideo.avi', fourcc, 6.99, (frame.shape[1], frame.shape[0]))
     while success:
-        print(count)
+        print(para.count)
 
-        count += 1
+        para.count += 1
 
-        if count > frame_count - 1:
+        if para.count > frame_count - 1:
             break
         success, frame = video_capture.read()  # 讀取下一幀
 
-        if count > outset_frame:
-            frame_blur = cv2.medianBlur(frame, median_blur_value)  # 中值濾波 rgb
+        if para.count > para.outset_frame:
+            frame_blur = cv2.medianBlur(frame, para.median_blur_value)  # 中值濾波 rgb
             current_frame_hsv = cv2.cvtColor(
                 frame_blur, cv2.COLOR_RGB2HSV) / 255  # 轉HSV並轉0~1
-            if cycle_point >= window_length:
-                cycle_point = 0
-            if count < outset_frame + window_length:
-                hsv_window[cycle_point] = current_frame_hsv
-                cycle_point += 1
-            if count == outset_frame + window_length:
-                avg_value = sum(hsv_window[0:window_length, :, :, channel]) / window_length
+            if para.cycle_point >= para.window_length:
+                para.cycle_point = 0
+            if para.count < para.outset_frame + para.window_length:
+                hsv_window[para.cycle_point] = current_frame_hsv
+                para.cycle_point += 1
+            if para.count == para.outset_frame + para.window_length:
+                avg_value = sum(hsv_window[0:para.window_length, :, :, para.channel]) / para.window_length
 
-            if count > outset_frame + window_length:
-                frame_diff = abs(avg_value[:, :] - current_frame_hsv[:, :, channel])
+            if para.count > para.outset_frame + para.window_length:
+                frame_diff = abs(avg_value[:, :] - current_frame_hsv[:, :, para.channel])
                 frame_diff = frame_diff / frame_diff.max()
 
                 ret, frame_binary = cv2.threshold(
-                    frame_diff, threshold_value, 1, cv2.THRESH_BINARY)
+                    frame_diff, para.threshold_value, 1, cv2.THRESH_BINARY)
 
                 img = (frame_binary * 255).astype(np.uint8)
 
-                kernel1 = np.ones(kernel_size1, np.uint8)  # kernel
-                kernel2 = np.ones(kernel_size2, np.uint8)  # kernel
+                kernel1 = np.ones(para.kernel_size1, np.uint8)  # kernel
+                kernel2 = np.ones(para.kernel_size2, np.uint8)  # kernel
 
                 img = opening(img, kernel1, kernel2)
 
                 clusteringDH(current_frame_hsv, img,out1,frame)
                 cv2.imshow('frame', frame)
-                if cv2.waitKey(wait_time) == ord('w'):
+                if cv2.waitKey(para.wait_time) == ord('w'):
                     cv2.waitKey(0)
 
-                avg_value = avg_value - hsv_window[cycle_point, :, :, channel] / \
-                            window_length + current_frame_hsv[:, :, channel] / window_length
+                avg_value = avg_value - hsv_window[para.cycle_point, :, :, para.channel] / \
+                            para.window_length + current_frame_hsv[:, :, para.channel] / para.window_length
 
-                # statisticsBackground(hsv_window, avg_value, current_frame_hsv, channel, kernel1, kernel2)
-                hsv_window[cycle_point, :, :, channel] = current_frame_hsv[:, :, channel]
-                cycle_point += 1
+                # statisticsBackground(hsv_window, avg_value, current_frame_hsv, para.channel, kernel1, kernel2)
+                hsv_window[para.cycle_point, :, :, para.channel] = current_frame_hsv[:, :, para.channel]
+                para.cycle_point += 1
 
 
 def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
@@ -156,16 +146,16 @@ def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
     cv2.imshow('Test', result1)
 
 
-def statisticsBackground(hsvWindow, avgValue, currentFrameHSV, channel, kernel1, kernel2):
-    std_value = np.std(hsvWindow[:, :, :, channel], axis=0)
+def statisticsBackground(hsvWindow, avgValue, currentFrameHSV, para.channel, kernel1, kernel2):
+    std_value = np.std(hsvWindow[:, :, :, para.channel], axis=0)
     std_upper = avgValue + 2 * std_value + 0.01
     std_lower = avgValue - 2 * std_value - 0.01
-    moving_obj_filter = (currentFrameHSV[:, :, channel] <= std_upper) & (currentFrameHSV[:, :, channel] >= std_lower)
+    moving_obj_filter = (currentFrameHSV[:, :, para.channel] <= std_upper) & (currentFrameHSV[:, :, para.channel] >= std_lower)
     # print(moving_obj_filter)
-    # print(frameHSV[:, :, channel])
+    # print(frameHSV[:, :, para.channel])
     # print(std_upper)
     # print(std_lower)
-    now = currentFrameHSV[:, :, channel].copy()
+    now = currentFrameHSV[:, :, para.channel].copy()
     now[moving_obj_filter] = 0
     now[~moving_obj_filter] = 1
     now = opening(now, kernel1, kernel2)
