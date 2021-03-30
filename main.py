@@ -2,7 +2,7 @@ import cv2 as cv2
 import numpy as np
 from sklearn.cluster import OPTICS, DBSCAN
 import os
-
+from para.parameter import Parameter
 
 def opening(image, kernel1, kernel2):
     image = cv2.erode(image, kernel1, 1)
@@ -30,8 +30,17 @@ def main():
     # from para import para_4723_0306_150000 as para
     # count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time, input_video = para.import_para()
 
-    from para import para_1702_0623_0800 as para
-    count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time = para.import_para()
+    para = Parameter()
+    count = para.count
+    outset_frame = para.outset_frame
+    cycle_point = para.cycle_point
+    channel = para.channel
+    window_length = para.window_length
+    kernel_size1 = para.kernel_size1
+    kernel_size2 = para.kernel_size2
+    threshold_value = para.threshold_value
+    median_blur_value = para.median_blur_value
+    wait_time = para.wait_time
 
     video_list = [i for i in os.listdir("./") if (i[-3::] == "mp4")]
     for num, video_name in enumerate(video_list):
@@ -120,7 +129,7 @@ def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
     x, y = np.where(result == 255)
     data = np.dstack([x, y])
     data = data[0]
-    # clustering = OPTICS(min_samples=50).fit(data)
+    
     clustering = DBSCAN(eps=5, min_samples=70).fit(data)
     
     last = np.setdiff1d(np.unique(clustering.labels_), np.array([-1]))
@@ -131,14 +140,11 @@ def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
         xy = [(x[i], y[i]) for i in a]
         for i, j in xy:
             class_map[i, j] = 1
-        # print()
+
         S = current_frame_HSV[:, :, 1]
         H = current_frame_HSV[:, :, 0]
         V = current_frame_HSV[:, :, 2]
         if(S[class_map == 1].mean() < sat_th):
-
-            # cv2.rectangle(result1, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
-            # cv2.rectangle(frame, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
             result1[class_map == 1] = 0
             cv2.imshow('Test', result1)
             cv2.imshow('obj', current_frame_HSV[min(x[a]):max(x[a]), min(y[a]):max(y[a]), 1])
