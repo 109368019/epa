@@ -3,7 +3,7 @@ def import_para():
     outset_frame = 0
     cycle_point = 0
     channel = 2  # H:0 S:1 V:2
-    window_length = 240
+    window_length = 249
 
     kernel_size1 = (5, 5)
     kernel_size2 = (7, 7)

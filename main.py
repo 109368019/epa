@@ -33,16 +33,16 @@ def main():
     from para import para_1702_0623_0800 as para
     count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time = para.import_para()
 
-    video_list = [i for i in os.listdir("./video/") if (i[-3::] == "mp4")]
+    video_list = [i for i in os.listdir("./") if (i[-3::] == "mp4")]
     for num, video_name in enumerate(video_list):
         print("{}. {}".format(num, video_name))
-    input_video = "./video/" + video_list[int(input('Select video: '))]
-    print(video_list[3])
+    input_video = "./" + video_list[int(input('Select video: '))]
+    # print(video_list[3])
 
     # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114524-20200306-130000-movie.mp4'
     # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114640-20200306-150000-movie.mp4'
     # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114723-20200306-150000-movie.mp4'
-    # input_video = './output.mp4'
+    # input_video = '瑞原環保-09冷媒回收設備區、10廢物品拆解線、13冰箱拆解線及冷媒吸取區、14冷媒回收設備區衍生物貯存區-20200717161702-20200623-080000-movie.mp4'
     # input_video = './綠環境-(B5)家電冷氣機冷媒吸取區、冷氣機及洗衣機處理線-20200331115136-20200306-110000-movie.mp4'
     # input_video = './20200416大東方-鏡頭13到鏡頭16-20200416-140000.mp4_20200423_091228.mkv'
     # input_video = './20200416大東方-鏡頭13到鏡頭16-20200416-100000.mp4_20200423_090536.mkv'
@@ -56,7 +56,7 @@ def main():
 
     hsv_window = np.zeros((window_length, 480, 720, 3), np.float32)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    print(frame.shape)
+    
     out1 = cv2.VideoWriter('outputVideo.avi', fourcc, 6.99, (frame.shape[1], frame.shape[0]))
     while success:
         print(count)
@@ -107,37 +107,44 @@ def main():
 
 
 def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
-
+    import sys
+    np.set_printoptions(threshold=sys.maxsize)
     vimg = (current_frame_HSV[:, :, 2] * 255).astype(np.uint8)
     v2_grayimg = cv2.merge([vimg, vimg, vimg])
-    result = (img * 255).astype(np.uint8)
+    result = np.array(img).astype(np.uint8)
+    
     result1 = v2_grayimg
     contours, hierarchy = cv2.findContours(result.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(v2_grayimg, contours, -1, (0, 0, 255), 2)
     cv2.drawContours(frame, contours, -1, (0, 0, 255), 2)
-    x, y = np.where(result == 1)
+    x, y = np.where(result == 255)
     data = np.dstack([x, y])
     data = data[0]
     # clustering = OPTICS(min_samples=50).fit(data)
-    try:
-        clustering = DBSCAN(eps=5, min_samples=70).fit(data)
-    except Exception as e:
-        print(e)
-        return
-    # print(clustering.labels_)
-    last = max(clustering.labels_)
-    for i in range(0, last + 1):
+    clustering = DBSCAN(eps=5, min_samples=70).fit(data)
+    
+    last = np.setdiff1d(np.unique(clustering.labels_), np.array([-1]))
+    
+    for i in last:
         a = np.where(clustering.labels_ == i)
-        if ((max(y[a]) - min(y[a])) * (max(x[a]) - min(x[a])) > 400) and (
-                current_frame_HSV[min(x[a]):max(x[a]), min(y[a]):max(y[a]), 1].mean() < sat_th):
-            # if current_frame_HSV[min(x[a]):max(x[a]), min(y[a]):max(y[a]), 1].mean() < 0.07:
+        class_map = np.zeros((current_frame_HSV.shape[0], current_frame_HSV.shape[1]))
+        xy = [(x[i], y[i]) for i in a]
+        for i, j in xy:
+            class_map[i, j] = 1
+        # print()
+        S = current_frame_HSV[:, :, 1]
+        H = current_frame_HSV[:, :, 0]
+        V = current_frame_HSV[:, :, 2]
+        if(S[class_map == 1].mean() < sat_th):
 
-            cv2.rectangle(result1, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
-            cv2.rectangle(frame, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
+            # cv2.rectangle(result1, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
+            # cv2.rectangle(frame, (max(y[a]), max(x[a])), (min(y[a]), min(x[a])), (0, 255, 0), 2)
+            result1[class_map == 1] = 0
             cv2.imshow('Test', result1)
             cv2.imshow('obj', current_frame_HSV[min(x[a]):max(x[a]), min(y[a]):max(y[a]), 1])
-            print('mean saturation value: ', current_frame_HSV[min(x[a]):max(x[a]), min(y[a]):max(y[a]), 1].mean())
+            print('mean saturation value: ', H[class_map == 1].mean(), S[class_map == 1].mean(), V[class_map == 1].mean())
             cv2.waitKey(0)
+            cv2.destroyWindow("obj")
 
     out1.write(frame)
     cv2.imshow('Test', result1)
