@@ -27,27 +27,16 @@ def main():
     # threshold_value = 0.07
     # median_blur_value = 3
     # wait_time = 100
-    # from para import para_4723_0306_150000 as para
-    # count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time, input_video = para.import_para()
+    from para import para_4723_0306_150000 as para
+    count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time, input_video = para.import_para()
+    #
+    # from para import para_1702_0623_0800 as para
+    # count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time = para.import_para()
 
-    from para import para_1702_0623_0800 as para
-    count, outset_frame, cycle_point, channel, window_length, kernel_size1, kernel_size2, threshold_value, median_blur_value, wait_time = para.import_para()
-
-    video_list = [i for i in os.listdir("./video/") if (i[-3::] == "mp4")]
+    video_list = [i for i in os.listdir("../video/") if (i[-3::] == "mp4")]
     for num, video_name in enumerate(video_list):
         print("{}. {}".format(num, video_name))
-    input_video = "./video/" + video_list[int(input('Select video: '))]
-    print(video_list[3])
-
-    # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114524-20200306-130000-movie.mp4'
-    # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114640-20200306-150000-movie.mp4'
-    # input_video = './綠環境-(A15)家電冷氣機設備投入口及處理線、冷媒吸取區-20200331114723-20200306-150000-movie.mp4'
-    # input_video = './output.mp4'
-    # input_video = './綠環境-(B5)家電冷氣機冷媒吸取區、冷氣機及洗衣機處理線-20200331115136-20200306-110000-movie.mp4'
-    # input_video = './20200416大東方-鏡頭13到鏡頭16-20200416-140000.mp4_20200423_091228.mkv'
-    # input_video = './20200416大東方-鏡頭13到鏡頭16-20200416-100000.mp4_20200423_090536.mkv'
-    # input_video = './5071922111_20200902_090000.mp4'
-    # input_video = '/home/spie/Desktop/EPA/Test/0306/綠電楊梅-01廠區大門、02廢物品已_待認證區A、G、S、03廢物品已_待認證區H、G、S、T、04廢物品已_待認證區A、B、C廢物品已_待認證區D、F-20210312-150000.mp4'
+    input_video = "../video/" + video_list[int(input('Select video: '))]
 
     video_capture = cv2.VideoCapture(input_video)
 
@@ -57,7 +46,7 @@ def main():
     hsv_window = np.zeros((window_length, 480, 720, 3), np.float32)
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     print(frame.shape)
-    out1 = cv2.VideoWriter('outputVideo.avi', fourcc, 6.99, (frame.shape[1], frame.shape[0]))
+    out1 = cv2.VideoWriter('./output_video/outputVideo.avi', fourcc, 6.99, (frame.shape[1], frame.shape[0]))
     while success:
         print(count)
 
@@ -106,7 +95,7 @@ def main():
                 cycle_point += 1
 
 
-def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.17):
+def clusteringDH(current_frame_HSV, img, out1, frame, sat_th=0.07):
 
     vimg = (current_frame_HSV[:, :, 2] * 255).astype(np.uint8)
     v2_grayimg = cv2.merge([vimg, vimg, vimg])
