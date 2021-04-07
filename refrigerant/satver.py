@@ -52,7 +52,7 @@ def check_mean(img, channel, x1, x2, y1, y2):
 from para.parameter import Parameter
 
 para = Parameter()
-
+#test
 frame_count = int(videoCapture.get(cv2.CAP_PROP_FRAME_COUNT))
 count = 0
 success, frame = videoCapture.read()  # 讀幀
