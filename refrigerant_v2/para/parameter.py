@@ -1,7 +1,7 @@
 class Parameter(object):
     # 綠環境-(B5)家電冷氣機冷媒吸取區、冷氣機及洗衣機處理線-20210305-080000
     def __init__(self):
-        self.start_frame =0 #1000
+        self.start_frame = 0 #1000
         self.window_length = 1000  # 總統計數量
         self.median_blur_value = 3
         self.probability_throuhold = 10
