@@ -1,5 +1,6 @@
 import numpy as np 
 import warnings
+import cv2 as cv2 
 warnings.simplefilter('always')
 
 from lib.ErrorMessage import CustomError
@@ -12,8 +13,8 @@ class Preprocessor(object):
         self.shape = shape 
         self.factor = factor
 
-    def reshape(self, data):
-        return np.reshape(data, self.shape)
+    def resize(self, data):
+        return cv2.resize(data, self.shape, interpolation=cv2.INTER_CUBIC)
     
     def normalization(self, data):
         if(self.factor==None):

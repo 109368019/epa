@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter('always')
 import numpy as np 
+import cv2 as cv2
 
 from lib.ErrorMessage import CustomError
 
@@ -60,7 +61,7 @@ class TrainDataLoader(object):
         elif(len(shape)==3):
             return shape[-1]
 
-    def reshape(self, target_shape=None):
+    def resize(self, target_shape=None):
         self.reshaped_data = {} 
         for class_ in self.raw_data.keys():
             count_ = 0
@@ -71,7 +72,7 @@ class TrainDataLoader(object):
                     count_+=1
                     processed_len = int(loading_bar_len*count_/data_len)
                     print("\rReshape class: {}, total:{} |{}{}|".format(class_, data_len, loaded_symbol*processed_len, unloaded_symbol*(loading_bar_len-processed_len)), end="")
-                    self.reshaped_data[class_].append(np.reshape(data, target_shape))
+                    self.reshaped_data[class_].append(cv2.resize(data, target_shape, interpolation=cv2.INTER_CUBIC))
                 print("Done.")
                 
         return self.reshaped_data
