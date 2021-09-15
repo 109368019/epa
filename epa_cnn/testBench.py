@@ -22,7 +22,11 @@ solveCudnnError.solve_cudnn_error()
 solveCudnnError.diable_tensorflow_warning()
 
 if __name__ == "__main__":
-    mt = ModelTrainer("test_version", (20,20))
-    mt.data_size=(20,20)
+    mt = ModelTrainer("test_version", (28,28))
     mt.loadTrainingData("train_data")
     mt.build()
+
+    model = mt.model
+    model.compile("adam", "mse")
+    model.fit(mt.x_train, mt.y_train, batch_size=8, epochs=2)
+
