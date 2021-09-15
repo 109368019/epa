@@ -1,6 +1,6 @@
 import os
-import re
 import sys
+import re
 import time
 import cv2
 import joblib
@@ -12,6 +12,9 @@ from sklearn.cluster import DBSCAN
 import json
 import threading
 
+#關閉warnings
+import warnings
+warnings.filterwarnings('ignore')
 
 class Refrigerant:
     def __init__(self, video_dir_path: str):
@@ -390,10 +393,15 @@ class Refrigerant:
                 if current_frame_index > self.para.start_frame + self.para.window_length or self.is_first_statistics:
                     different_frame = np.zeros((frame_x, frame_y), np.uint8)  # 宣告
                     moving_obj_frame_temp = different_frame[:, :]  # 宣告
-                    moving_obj_bool_frame = np.take_along_axis(self.value_counting_in_frame,
-                                                               (current_frame_HSV[:, :, self.statistics_channel] * 255).
-                                                               reshape(frame_x, frame_y, 1).astype(int),
-                                                               axis=2) < self.para.probability_throuhold
+
+                    # start =time.time()
+                    moving_obj_bool_frame = np.take_along_axis(
+                        self.value_counting_in_frame, 
+                        (current_frame_HSV[:, :, self.statistics_channel] * 255).reshape(frame_x, frame_y, 1).astype(int),
+                        axis=2
+                    ) < self.para.probability_throuhold
+                    # print(time.time()-start)
+
                     moving_obj_frame_temp[moving_obj_bool_frame.reshape(frame_x, frame_y)] = 255
                     different_frame[:, :] = moving_obj_frame_temp
                     and_frame = self.and_func(self.previous_different_frame, different_frame)
@@ -426,34 +434,33 @@ class Refrigerant:
                     different_frame_x, different_frame_y = np.where(img[:, :] == 255)
                     different_points_coordinates = np.dstack([different_frame_x, different_frame_y])
                     different_points_coordinates = different_points_coordinates[0]
-
-                    try:
+                    # print(different_points_coordinates)
+                    if(len(different_points_coordinates)!=0):
                         # TODO try 8-connect
 
-                        clustering = DBSCAN(
-                            eps=self.para.eps_value, min_samples=self.para.min_samples_size).fit(
-                            different_points_coordinates)
+                        # clustering = DBSCAN(
+                        #     eps=self.para.eps_value, min_samples=self.para.min_samples_size).fit(
+                        #     different_points_coordinates)
 
-                        all_labels_array = np.setdiff1d(np.unique(clustering.labels_),
-                                                        np.array([-1]))  # 分群的結果可能會有 -1 類別(無歸屬)，此類別須排除
+                        # all_labels_array = np.setdiff1d(np.unique(clustering.labels_),
+                        #                                 np.array([-1]))  # 分群的結果可能會有 -1 類別(無歸屬)，此類別須排除
 
-                        each_frame_para_list = []
-                        H = current_frame_HSV[:, :, 0]
-                        S = current_frame_HSV[:, :, 1]
-                        V = current_frame_HSV[:, :, 2]
-                        total_avg_value = V.mean()
-                        total_avg_sat = S.mean()
+                        # each_frame_para_list = []
+                        # H = current_frame_HSV[:, :, 0]
+                        # S = current_frame_HSV[:, :, 1]
+                        # V = current_frame_HSV[:, :, 2]
+                        # total_avg_value = V.mean()
+                        # total_avg_sat = S.mean()
 
                         # self.cal_para(all_labels_array, clustering, contour_frame, current_frame_HSV,
                         #               current_frame_index, different_frame_x, different_frame_y, each_frame_para_list,
                         #               frame, log_file, total_avg_sat, total_avg_value)
+                        post_frame = self.window_hsv[self.statistics_index - 1, :, :, 2]
                         threading.Thread(target=self.cal_para,
-                                         args=(all_labels_array, clustering, contour_frame, current_frame_HSV,
-                                      current_frame_index, different_frame_x, different_frame_y, each_frame_para_list,
-                                      frame, log_file, total_avg_sat, total_avg_value)).start()
-
-                    except Exception as e:
+                                         args=(different_points_coordinates, contour_frame, current_frame_HSV, current_frame_index, different_frame_x, different_frame_y, frame, log_file, post_frame)).start()
+                    else:
                         pass
+
                     if save_video:
                         red_video.write(contour_frame)
 
@@ -469,9 +476,20 @@ class Refrigerant:
         with open(output_log_path + file_name + ".json", 'w') as fp:
             json.dump(log_file, fp)
 
-    def cal_para(self, all_labels_array, clustering, contour_frame, current_frame_HSV, current_frame_index,
-                 different_frame_x, different_frame_y, each_frame_para_list, frame, log_file, total_avg_sat,
-                 total_avg_value):
+    def cal_para(self, different_points_coordinates, contour_frame, current_frame_HSV, current_frame_index, different_frame_x, different_frame_y, frame, log_file, post_frame):
+        clustering = DBSCAN(
+            eps=self.para.eps_value, min_samples=self.para.min_samples_size).fit(
+            different_points_coordinates)
+
+        all_labels_array = np.setdiff1d(np.unique(clustering.labels_),
+                                        np.array([-1]))  # 分群的結果可能會有 -1 類別(無歸屬)，此類別須排除
+
+        each_frame_para_list = []
+        H = current_frame_HSV[:, :, 0]
+        S = current_frame_HSV[:, :, 1]
+        V = current_frame_HSV[:, :, 2]
+        total_avg_value = V.mean()
+        total_avg_sat = S.mean()
         for each_label in all_labels_array:
             labels_index = np.where(clustering.labels_ == each_label)
             class_map = np.zeros((current_frame_HSV.shape[0], current_frame_HSV.shape[1]))
@@ -489,13 +507,13 @@ class Refrigerant:
 
             if (class_map_criteria):
                 obj_brighten = False
-                try:
-                    obj_brighten = True if current_frame_HSV[:, :, 2][
-                                               class_map == 1].mean() - \
-                                           self.window_hsv[self.statistics_index - 1, :, :, 2][
-                                               class_map == 1].mean() > 0 else False
-                except:
-                    obj_brighten = False
+                # try:
+                if((current_frame_HSV[:, :, 2][class_map == 1].mean() - 
+                    post_frame[class_map == 1].mean()) > 0):
+                    obj_brighten = True
+                # except:
+                #     obj_brighten = False
+                # print(self.statistics_index)
                 obj_avg_value = current_frame_HSV[:, :, 2][class_map == 1].mean()
                 obj_avg_saturation = current_frame_HSV[:, :, 1][class_map == 1].mean()
                 obj_std_value = current_frame_HSV[:, :, 2][class_map == 1].std()
@@ -788,7 +806,7 @@ class Refrigerant:
 # cam = "B2"
 # path = "../ref/{}/{}/{}/".format(time, env, cam)
 
-video_dir_path = "../video/B513/"
+video_dir_path = "../video/"
 # video_dir_path = "../video/test/"
 refrigerant_system = Refrigerant(video_dir_path)
 refrigerant_system.execute()
