@@ -29,4 +29,5 @@ if __name__ == "__main__":
     model = mt.model
     model.compile("adam", "mse")
     model.fit(mt.x_train, mt.y_train, batch_size=8, epochs=2)
-
+    results = model.evaluate(mt.x_test, mt.y_test, batch_size=32)
+    print("test loss, test acc:", results)
