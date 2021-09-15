@@ -2,7 +2,7 @@
 import os, sys
 
 # tensorflow lib
-import tensorflow as tf 
+# import tensorflow as tf 
 from tensorflow import keras as K
 from tensorflow.keras import layers as L
 
@@ -16,7 +16,7 @@ class ModelBuilder(object):
         self.default_model_path = "models"
         self.__dirChecker(self.default_model_path)
 
-        self.model_version = model_version
+        self.model_version = "{}.h5".format(model_version)
 
     def __modelDefinition(self): # define your model
         input_layer = L.Input(shape=(28,28,3))
@@ -31,7 +31,7 @@ class ModelBuilder(object):
 
     def __dirChecker(self, path):
         print("Checking file path ({})...".format(path), end="")
-        if(not os.isdir(path)):
+        if(not os.path.isdir(path)):
             print("Fail.")
             print("Build file path ({})".format(path))
             os.mkdir(path)
@@ -42,7 +42,7 @@ class ModelBuilder(object):
     
     def __fileChecker(self, path):
         print("Checking file ({})...".format(path), end="")
-        if(not os.isfile(path)):
+        if(not os.path.isfile(path)):
             print("Fail.")
             return False
         else:
@@ -50,13 +50,18 @@ class ModelBuilder(object):
             return True
 
     def build(self, summary=True):
-        if(self.__fileChecker(self.model_version)):
-            self.model = K.models.load_model(os.path.join(self.default_model_path, self.model_version))
+        model_path = os.path.join(self.default_model_path, self.model_version)
+        if(self.__fileChecker(model_path)):
+            print("Load model.")
+            self.model = K.models.load_model(model_path)
         else:
+            print("Build model.")
             self.model = self.__modelDefinition()
+            self.model.save(model_path, save_format="h5")
 
         if(summary):
             self.model.summary()
+
         return self.model
 
         

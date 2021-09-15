@@ -1,7 +1,5 @@
-import numpy as np 
-import warnings
+import numpy as np
 import cv2 as cv2 
-warnings.simplefilter('always')
 
 from lib.ErrorMessage import CustomError
 

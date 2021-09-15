@@ -1,7 +1,7 @@
 import os 
 import matplotlib.pyplot as plt 
 import warnings
-warnings.simplefilter('always')
+# warnings.simplefilter('default')
 import numpy as np 
 import cv2 as cv2
 
@@ -61,8 +61,8 @@ class TrainDataLoader(object):
         elif(len(shape)==3):
             return shape[-1]
 
-    def resize(self, target_shape=None):
-        self.reshaped_data = {} 
+    def resize(self, target_shape):
+        self.reshaped_data = {}
         for class_ in self.raw_data.keys():
             count_ = 0
             data_len = len(self.raw_data[class_])
@@ -116,4 +116,3 @@ class TrainDataLoader(object):
                 raise CustomError("Factor not available.")
         
         return self.normalized_data
-
