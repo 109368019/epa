@@ -1,2 +1,3 @@
 *.mp4
 ./video
+./test_svm_file_th1
