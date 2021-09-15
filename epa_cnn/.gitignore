@@ -1,3 +1,3 @@
-./train_data
-./lib/__pycache__
-./models_structure
+train_data
+lib/__pycache__
+models_structure
