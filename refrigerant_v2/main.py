@@ -49,7 +49,7 @@ class Refrigerant:
         self.report_list.append(video_time[:-4])
 
         # output_path = '../ref/{}/{}/{}'.format(video_date, environment_name, camera_name)
-        output_path = '../test_svm_file_th1/{}/{}/{}'.format(video_date, environment_name, camera_name)
+        output_path = '../output/{}/{}/{}'.format(video_date, environment_name, camera_name)
         print("output path: ", output_path)
         self.roi_csv_file_path = "./roi/{}.csv".format(input_video_name[:-20])
         self.log_path = output_path + "/log/"
@@ -601,96 +601,121 @@ class Refrigerant:
 
         # print(first_num)
         # print(last_num)
+        #讀log將所有事件分為紅框與綠框並標記該座標條件list
+        #判斷事件條件與物件條件是否有交集
+        #若有交集則延續事件，若有交集的物件為紅框活躍度-1並繼續追蹤，若為綠框則將活躍度重置
+        #若事件與紅綠框都沒交集則結束事件
+        #根據最後的活躍度減去事件幀數
+        #若事件長度小於MINI_LENGTH則刪除該事件
+        #若紅框沒有與任何事件交集則忽略
+        #若綠框沒有與任何事件交集則新增事件
 
         MINI_LENGTH = 2
         stop_event_buffer = 7
         non_event_count = 0
 
         event_real = []  # [[start_frame,end_frame],[]...]
-        event_temp = []  # [[start_frame_num, non_event_count, [extra_condition]],...] 當 non_event_count >= 2 pop to event_real
+        event_temp = []  # [[start_frame_num, non_event_count, [present condition list],[next condition list],End_flag],...] 當 non_event_count >= 2 pop to event_real
         condition = 1
-
+        roi_x = 240      # 需要改成讀取影片長寬
+        roi_y = 360
+        scope = 20       # 將影像量化成幾格
+        scope_x = roi_x // scope
+        scope_y = roi_y // scope
+        print(scope_x,scope_y)
         for frame_num in range(first_num, last_num + 1):
             frame_data = log.get(str(frame_num), "None")
+            #進度條
             print("\r[Creat_Event] |{}{}| {:>5.0f}/{:>5.0f} - {:>3.0f}%".format(
                 '█' * int((frame_num - first_num + 1) * 20 / (last_num + 1 - first_num)),
                 ' ' * (20 - int((frame_num - first_num + 1) * 20 / (last_num + 1 - first_num))), frame_num,
                 last_num, ((frame_num - first_num) / (last_num + 1 - first_num)) * 100), end="")
-            # print(frame_num)
             if frame_data != "None":
+                # 讀取動態物
                 obj_data = frame_data.get("obj_data", "None")
-                new_obj_data = []
+                new_obj_data = []                  
                 # common condition
                 for i in range(0, len(obj_data)):
-                    # print(obj_data)
+                    #將紅框與綠框標記
+                    #並將其座標清單紀錄
+                    obj_loc = []
                     data_temp = obj_data[i]
                     value_criteria = data_temp["obj_avg_value"] > self.para.mean_value_limit
                     sat_criteria = data_temp["obj_avg_sat"] < self.para.mean_satuation_limit
-                    svm_criteria = data_temp["svm_predict"] == "ref"
-                    if (value_criteria and sat_criteria and data_temp["obj_brighten"] and svm_criteria):
-                        new_obj_data.append(data_temp)
+                    # svm_criteria = data_temp["svm_predict"] == "ref"
+                    for i in range((data_temp['obj_min_x']//scope_x)-1,(data_temp['obj_max_x']//scope_x)+1):
+                       for j in range((data_temp['obj_min_y']//scope_y)-1,(data_temp['obj_max_y']//scope_y)+1): 
+                           obj_loc.append(str(i) + ',' + str(j))
+                    if (value_criteria and sat_criteria and data_temp["obj_brighten"] ):# and svm_criteria
+                        ref_tag = True
+                    else:
+                        ref_tag = False
+                    data_temp.update({"ref_tag":ref_tag})
+                    data_temp.update({"obj_loc":obj_loc})
+                    data_temp.update({"use_or_not":False})
+                    new_obj_data.append(data_temp)
 
-                for i in range(0, len(event_temp)):
-                    condition_list = event_temp[i][2]
-                    event_flag = False
+                for i in range(0, len(event_temp)): #若沒有以存在的暫存事件則跳過
+                    event_loc = event_temp[i][2]
+                    event_flag = False      
+                    next_condition_save = []
                     for j in range(0, len(new_obj_data)):
-                        obj_data_dict = new_obj_data[i]
-                        #
-                        #
-                        #
-                        if (condition) == 1:  # 判斷某物件是否屬於某事件
-                            event_flag = True
-                            event_temp[i][1] = 0
-                            # updata event criteria
-                            del new_obj_data[j]
-                            break
-                    if not event_flag:
-                        # non event count ++
+                        
+                        obj_loc = new_obj_data[j]["obj_loc"]    #讀取動態物座標清單
+                        ref_tag = new_obj_data[j]["ref_tag"]    #讀取紅框綠框標記
+                        
+                        if len(set(event_loc) & set(obj_loc)) >= 1: #若為同事件之動態物
+                            loc_condition = True
+                        else:                                       #反之
+                            loc_condition = False
+                        
+                        if loc_condition:                           
+                            new_obj_data[j]["use_or_not"] = True    #將動態物標記為包含再某事件內
+                            next_condition_save = list(set(next_condition_save) | set(obj_loc)) #新增下幀座標清單 （動態物聯集）
+                            if ref_tag:
+                                event_flag = True                   #該動態物是否為綠框
+                    
+                    event_temp[i][3]= next_condition_save
+
+                    if event_flag == True:
+                        event_temp[i][1] = 0
+                    else:
                         event_temp[i][1] += 1
                 # if new obj_event add event_temp
-                if len(new_obj_data) >= 1:
-                    for i in range(0, len(new_obj_data)):
-                        # event condition => event_temp
-                        save_event = new_obj_data[i]
-                        condition_save = 1
-                        event_temp.append([frame_num, 0, condition_save])  # 產生新事件
-            # merge similar event
+                # 有新物件需要新增事件
+                for i in range(0, len(new_obj_data)):
+                    now_condition_save = []
+                    next_condition_save = []
+                    now_data = new_obj_data[i]
+                    if (now_data["ref_tag"]==True) and (now_data["use_or_not"]== False):
+                        next_condition_save = now_data["obj_loc"]
+                        event_temp.append([frame_num, 0, now_condition_save,next_condition_save,False]) 
+
+                        # save_event = new_obj_data[i]
+                #將 下幀的條件載入 並清空
+                for i in range(0, len(event_temp)):
+                    event_temp[i][2]=event_temp[i][3]
+                    event_temp[i][3]=[]
+            #若無動態物則全部事件非活躍+1
             else:
-                if len(event_temp) >= 1:
-                    for i in range(0, len(event_temp)):
-                        event_temp[i][1] += 1
-
-            merge_event_temp = []
+                for i in range(0, len(event_temp)):
+                    event_temp[i][1] += 1
+                    event_temp[i][2]=event_temp[i][3]
+                    event_temp[i][3]=[]
+            j=0
+            #判斷事件是否結束、是否符合條件。
             for i in range(0, len(event_temp)):
-                condition_buffer = event_temp[i]
-                if condition_buffer == -1:
-                    continue
-                condition_i = condition_buffer[2]
-                for j in range(i + 1, len(event_temp)):
-                    condition_j = event_temp[j][2]
-                    if condition_i == condition_j:
-                        start_frame_num = min(event_temp[i][0], event_temp[j][0])
-                        nec = min(event_temp[i][1], event_temp[j][1])
-                        if event_temp[i][0] < event_temp[j][0]:
-                            condition_buffer = [start_frame_num, nec, condition_j]
-                        else:
-                            condition_buffer = [start_frame_num, nec, condition_i]
-                        event_temp[j] = -1
-                merge_event_temp.append(condition_buffer)
-            # check non event count
-            event_temp = []
-            for i in range(0, len(merge_event_temp)):
-                if merge_event_temp[i][1] < stop_event_buffer:
-                    event_temp.append(merge_event_temp[i])
-                else:
-                    event_len = frame_num - merge_event_temp[i][0] + 1 - stop_event_buffer
+                if event_temp[i-j][1] >= stop_event_buffer:
+                    event_len = frame_num - event_temp[i-j][0] + 1 - stop_event_buffer
                     if event_len > MINI_LENGTH:
-                        event_real.append([merge_event_temp[i][0], frame_num - stop_event_buffer])
-
-            with open(event_path + file_name + ".csv", 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                for i in event_real:
-                    writer.writerow(i)
+                        event_real.append([event_temp[i-j][0],frame_num-stop_event_buffer])
+                    del event_temp[i-j]
+                    j += 1
+        #寫入檔案
+        with open(event_path + file_name + ".csv", 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for i in event_real:
+                writer.writerow(i)
 
     def creat_event_video_result(self, input_video_path, log_path, event_path, output_video_path, file_name,
                                  save_video=True):
@@ -778,21 +803,21 @@ class Refrigerant:
             self.report_list = []
             print("[1] Creat path")
             path_dict = self.creat_path(video_name)
-            print("[2] Motion detict logger start")
-            self.motion_detict_logger_test(path_dict["input_video_path"], path_dict["log_path"],
-                                           self.path_dict["roi_csv_file_path"], path_dict["file_name"], False)
-            end_time = time.time()
-            print(" time: {}s".format(round(end_time - start_time, 2)), end="")
-            print()
+            # print("[2] Motion detict logger start")
+            # self.motion_detict_logger_test(path_dict["input_video_path"], path_dict["log_path"],
+            #                                self.path_dict["roi_csv_file_path"], path_dict["file_name"], False)
+            # end_time = time.time()
+            # print(" time: {}s".format(round(end_time - start_time, 2)), end="")
+            # print()
 
             print("[3] Creat event")
             self.creat_event(path_dict["log_path"], path_dict["event_path"], path_dict["file_name"])
             print()
 
-            print("[4] Creat event video ref")
-            self.creat_event_video_result(path_dict["input_video_path"], path_dict["log_path"], path_dict["event_path"],
-                                          path_dict["output_video_path"], path_dict["file_name"])
-            print()
+            # print("[4] Creat event video ref")
+            # self.creat_event_video_result(path_dict["input_video_path"], path_dict["log_path"], path_dict["event_path"],
+            #                               path_dict["output_video_path"], path_dict["file_name"])
+            # print()
 
             total_end_time = time.time()
             self.report_list.append(round(total_end_time - start_time, 3))
