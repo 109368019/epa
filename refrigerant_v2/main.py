@@ -25,6 +25,7 @@ class Refrigerant:
         self.report_list = []
         self.svm_model = joblib.load('clf3.pkl')
         self.DCT_LEVEL = 32
+        self.pic_name = ""
 
     def creat_path(self, input_video_name: str):
         # print(self.video_dir_path)
@@ -42,6 +43,7 @@ class Refrigerant:
         video_date = re.findall('([^-]+)', input_video_name)[2]
         video_time = re.findall('([^-]+)', input_video_name)[3][:-4]
         print(environment_name, camera_name, video_date, video_time)
+        self.pic_name = camera_name + video_date + video_time
         self.report_list.append(video_date)
         self.report_list.append(video_time[:-4])
 
@@ -75,15 +77,19 @@ class Refrigerant:
         print("ROI file path: ", roi_csv_file_path)
         # input()
         self.area_list = []
-        with open(roi_csv_file_path, newline='') as csvFile:
-            csvReader = csv.reader(csvFile, delimiter='|')
-            row = list(csvReader)
-            for each_area in row:
-                area_tmp = []
-                for each_point in each_area:
-                    x, y = each_point.split(",")
-                    area_tmp.append([int(x), int(y)])
-                self.area_list.append(np.array(area_tmp))
+        try:
+            with open(roi_csv_file_path, newline='') as csvFile:
+                csvReader = csv.reader(csvFile, delimiter='|')
+                row = list(csvReader)
+                for each_area in row:
+                    area_tmp = []
+                    for each_point in each_area:
+                        x, y = each_point.split(",")
+                        area_tmp.append([int(x), int(y)])
+                    self.area_list.append(np.array(area_tmp))
+        except:
+            print("No ROI file")
+            self.area_list.append(np.array([[0, 0], [-1, 0], [-1, -1], [0, -1]]))
 
     def generate_svm_feature(self, img):
         # print("generate_svm_feature")
@@ -324,6 +330,9 @@ class Refrigerant:
         frames_num_of_input_video = int(videoCapture.get(cv2.CAP_PROP_FRAME_COUNT))
         current_frame_index = 0
         success, frame = videoCapture.read()  # 讀幀
+        # frame = frame[240:-1, 360:-1]
+        # cv2.imshow("ddf",frame)
+        # cv2.waitKey(0)
         frame_x = frame.shape[0]  # 480
         frame_y = frame.shape[1]  # 720
         print("frame size: {}, {}".format(frame_x, frame_y))
@@ -361,6 +370,7 @@ class Refrigerant:
 
             success, frame = videoCapture.read()  # 讀取下一幀
             contour_frame = frame.copy()
+            save_frame = frame.copy()
 
             if current_frame_index > self.para.start_frame or self.is_first_statistics:  # 開始
                 frame_blur = cv2.medianBlur(frame, self.para.median_blur_value, cv2.BORDER_DEFAULT)  # 中值濾波 rgb
@@ -404,11 +414,17 @@ class Refrigerant:
                     img = cv2.erode(img, None, iterations=2)  # 侵蝕膨脹去雜訊
                     img = cv2.dilate(img, None, iterations=2)
 
-                    cv2.polylines(contour_frame, self.area_list, True, (0, 0, 255), 2)
+                    # cv2.polylines(contour_frame, self.area_list, True, (0, 0, 255), 2)
                     cv2.fillPoly(img, self.area_list, (0, 0, 0))
 
                     ctrs, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    cv2.drawContours(contour_frame, ctrs, -1, (0, 0, 255), 2)
+                    # cv2.drawContours(contour_frame, ctrs, -1, (0, 0, 255), 2)
+                    cv2.drawContours(contour_frame, ctrs, -1, (0, 0, 255), 1)
+                    contour_frame_copy = contour_frame.copy()
+
+                    cv2.imshow("contour frame", contour_frame)
+                    cv2.imshow("save_frame", save_frame)
+                    cv2.waitKey(1)
                     # TODO debug====
                     # cv2.imshow('different_frame', different_frame)
                     # cv2.imshow('and_frame', and_frame)
@@ -447,10 +463,156 @@ class Refrigerant:
                         # self.cal_para(all_labels_array, clustering, contour_frame, current_frame_HSV,
                         #               current_frame_index, different_frame_x, different_frame_y, each_frame_para_list,
                         #               frame, log_file, total_avg_sat, total_avg_value)
-                        threading.Thread(target=self.cal_para,
-                                         args=(all_labels_array, clustering, contour_frame, current_frame_HSV,
-                                      current_frame_index, different_frame_x, different_frame_y, each_frame_para_list,
-                                      frame, log_file, total_avg_sat, total_avg_value)).start()
+
+                        #  --
+                        # threading.Thread(target=self.cal_para,
+                        #                  args=(all_labels_array, clustering, contour_frame, current_frame_HSV,
+                        #                        current_frame_index, different_frame_x, different_frame_y,
+                        #                        each_frame_para_list,
+                        #                        frame, log_file, total_avg_sat, total_avg_value, img,
+                        #                        save_frame)).start()
+                        #
+                        # for thread in threading.enumerate():
+                        #     if thread != threading.current_thread():
+                        #         thread.join()
+                        #  --
+
+                        # ===============================================================
+                        for each_label in all_labels_array:
+                            labels_index = np.where(clustering.labels_ == each_label)
+                            class_map = np.zeros((current_frame_HSV.shape[0], current_frame_HSV.shape[1]))
+                            points_of_coordinates_in_label = [
+                                (different_frame_x[each_point_index], different_frame_y[each_point_index]) for
+                                each_point_index in labels_index]
+
+                            for points_x, points_y in points_of_coordinates_in_label:
+                                class_map[points_x, points_y] = 1
+
+                            # criteria condition
+                            class_map_num = len(points_of_coordinates_in_label[0][0])
+                            class_map_criteria = class_map_num > self.para.class_map_num_value
+                            # TODO Thread
+
+                            if (class_map_criteria):
+                                obj_brighten = False
+                                try:
+                                    obj_brighten = True if current_frame_HSV[:, :, 2][
+                                                               class_map == 1].mean() - \
+                                                           self.window_hsv[self.statistics_index - 3, :, :, 2][
+                                                               class_map == 1].mean() > 0 else False
+                                    # obj_brighten = True if self.window_hsv[self.statistics_index - 1, :, :, 2][
+                                    #                            class_map == 1].mean() - \
+                                    #                        self.window_hsv[self.statistics_index - 2, :, :, 2][
+                                    #                            class_map == 1].mean() > 0 else False
+                                except:
+                                    obj_brighten = False
+                                obj_avg_value = current_frame_HSV[:, :, 2][class_map == 1].mean()
+                                obj_avg_saturation = current_frame_HSV[:, :, 1][class_map == 1].mean()
+                                obj_std_value = current_frame_HSV[:, :, 2][class_map == 1].std()
+                                obj_std_saturation = current_frame_HSV[:, :, 1][class_map == 1].std()
+                                obj_min_x = min(points_of_coordinates_in_label[0][0])
+                                obj_max_x = max(points_of_coordinates_in_label[0][0])
+                                obj_min_y = min(points_of_coordinates_in_label[0][1])
+                                obj_max_y = max(points_of_coordinates_in_label[0][1])
+                                # svm_feature = self.generate_svm_feature(frame[obj_min_x:obj_max_x, obj_min_y:obj_max_y])
+                                para_dict = {"obj_min_x": int(obj_min_x), "obj_max_x": int(obj_max_x),
+                                             "obj_min_y": int(obj_min_y), "obj_max_y": int(obj_max_y),
+                                             "obj_avg_value": obj_avg_value, "obj_avg_sat": obj_avg_saturation,
+                                             "obj_std_value": obj_std_value, "obj_std_sat": obj_std_saturation,
+                                             "obj_brighten": obj_brighten,
+                                             # "svm_predict": self.svm_predict(svm_feature)
+                                             }
+                                each_frame_para_list.append(para_dict)
+
+                                if obj_avg_value > self.para.mean_value_limit and obj_avg_saturation < self.para.mean_satuation_limit and obj_brighten:
+                                    min_x = min(different_frame_x[labels_index])
+                                    max_x = max(different_frame_x[labels_index]) + 1
+                                    min_y = min(different_frame_y[labels_index])
+                                    max_y = max(different_frame_y[labels_index]) + 1
+                                    countour_frame_single = contour_frame_copy[
+                                                            min_x:max_x,
+                                                            min_y:max_y].copy()
+                                    cv2.imshow("contour frame single", countour_frame_single)
+
+                                    cv2.imshow("contour img", img[min_x:max_x, min_y:max_y])
+
+                                    img_single = img[min_x:max_x, min_y:max_y]
+
+                                    roi_img_single = save_frame[min_x:max_x, min_y:max_y]
+
+                                    roi_img_single[:, :, 0] = roi_img_single[:, :, 0] & img_single
+                                    roi_img_single[:, :, 1] = roi_img_single[:, :, 1] & img_single
+                                    roi_img_single[:, :, 2] = roi_img_single[:, :, 2] & img_single
+
+                                    cv2.rectangle(contour_frame, (max_y, max_x), (min_y, min_x), (0, 255, 0), 2)
+
+                                    cv2.imshow("contour frame", contour_frame)
+                                    cv2.imshow("save_frame", save_frame)
+                                    cv2.imshow("roi_img_single", roi_img_single)
+                                    wait_key = cv2.waitKey(0)
+
+                                    if wait_key == ord('a'):  # ref
+                                        # print("ref")
+                                        print(self.pic_name)
+                                        cv2.imwrite('pic_all/ref/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    roi_img_single)
+                                        cv2.imwrite('pic_all/ref_red/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    countour_frame_single)
+                                        cv2.imwrite('pic_all/ref_complete/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    frame[min_x:max_x, min_y:max_y])
+
+                                    elif wait_key == ord('d'):
+                                        # print("neg")
+                                        cv2.imwrite('pic_all/neg/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    roi_img_single)
+                                        cv2.imwrite('pic_all/neg_red/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    countour_frame_single)
+                                        cv2.imwrite('pic_all/neg_complete/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    frame[min_x:max_x, min_y:max_y])
+
+                                    elif wait_key == ord('s'):
+                                        # print("neg")
+                                        cv2.imwrite('pic_all/bk/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    roi_img_single)
+                                        cv2.imwrite('pic_all/bk_red/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    countour_frame_single)
+                                        cv2.imwrite('pic_all/bk_complete/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    frame[min_x:max_x, min_y:max_y])
+
+                                    elif wait_key == ord('w'):
+                                        # print("neg")
+                                        cv2.imwrite('pic_all/water/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    roi_img_single)
+                                        cv2.imwrite('pic_all/water_red/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    countour_frame_single)
+                                        cv2.imwrite('pic_all/water_complete/%s_pic_%d_%d.png' % (
+                                            self.pic_name, current_frame_index, each_label),
+                                                    frame[min_x:max_x, min_y:max_y])
+
+                                    elif wait_key == ord('l'):
+                                        print("exit")
+                                        sys.exit()
+
+                        if len(each_frame_para_list) > 0:
+                            log_file.update(
+                                {current_frame_index: {"total_avg_value": total_avg_value,
+                                                       "total_avg_sat": total_avg_sat,
+                                                       "obj_count": len(each_frame_para_list),
+                                                       "obj_data": each_frame_para_list}})
+                        # ===============================================================
+
+
 
                     except Exception as e:
                         pass
@@ -471,7 +633,7 @@ class Refrigerant:
 
     def cal_para(self, all_labels_array, clustering, contour_frame, current_frame_HSV, current_frame_index,
                  different_frame_x, different_frame_y, each_frame_para_list, frame, log_file, total_avg_sat,
-                 total_avg_value):
+                 total_avg_value, img, save_frame):
         for each_label in all_labels_array:
             labels_index = np.where(clustering.labels_ == each_label)
             class_map = np.zeros((current_frame_HSV.shape[0], current_frame_HSV.shape[1]))
@@ -512,23 +674,48 @@ class Refrigerant:
                              "obj_brighten": obj_brighten, "svm_predict": self.svm_predict(svm_feature)}
                 each_frame_para_list.append(para_dict)
                 if obj_avg_value > self.para.mean_value_limit and obj_avg_saturation < self.para.mean_satuation_limit and obj_brighten:
-                    # cv2.imwrite('pic/pic_%d_%d.png' % (current_frame_index, each_label),
-                    #             frame[obj_min_x:obj_max_x,
-                    #             obj_min_y:obj_max_y])  # count是當前第幾幀， i是當前幀數的第幾個框
+                    cv2.imshow("contour frame single", contour_frame[min(different_frame_x[labels_index]):max(
+                        different_frame_x[labels_index]), min(different_frame_y[labels_index]):max(
+                        different_frame_y[labels_index])])
+
+                    cv2.imshow("contour img", img[min(different_frame_x[labels_index]):max(
+                        different_frame_x[labels_index]), min(different_frame_y[labels_index]):max(
+                        different_frame_y[labels_index])])
+
+                    img_single = img[min(different_frame_x[labels_index]):max(
+                        different_frame_x[labels_index]), min(different_frame_y[labels_index]):max(
+                        different_frame_y[labels_index])]
+
+                    ori_img_single = save_frame[min(different_frame_x[labels_index]):max(
+                        different_frame_x[labels_index]), min(different_frame_y[labels_index]):max(
+                        different_frame_y[labels_index])]
+
+                    ori_img_single[:, :, 0] = ori_img_single[:, :, 0] & img_single
+                    ori_img_single[:, :, 1] = ori_img_single[:, :, 1] & img_single
+                    ori_img_single[:, :, 2] = ori_img_single[:, :, 2] & img_single
+
                     cv2.rectangle(contour_frame, (
                         max(different_frame_y[labels_index]), max(different_frame_x[labels_index])), (
                                       min(different_frame_y[labels_index]),
                                       min(different_frame_x[labels_index])),
                                   (0, 255, 0), 2)
+                    cv2.imshow("contour frame", contour_frame)
+                    cv2.imshow("save_frame", save_frame)
+                    cv2.imshow("ori_img_single", ori_img_single)
+                    # wait_key = cv2.waitKey(0)
+
+                    # if wait_key == ord('a'):  # ref
+                    #     cv2.imwrite('pic_all/ref/pic_%d_%d.png' % (current_frame_index, each_label), contour_frame)
+                    #     cv2.imwrite('pic_all/ref_red/pic_%d_%d.png' % (current_frame_index, each_label), contour_frame)
+                    # elif wait_key == ord('d'):
+                    #     cv2.imwrite('pic_all/neg/pic_%d_%d.png' % (current_frame_index, each_label), contour_frame)
+                    #     cv2.imwrite('pic_all/neg_red/pic_%d_%d.png' % (current_frame_index, each_label), contour_frame)
+                    #
+                    # elif wait_key == ord('l'):
+                    #     sys.exit()
 
                     # cv2.imwrite('pic_all/pic_%d_%d.png' % (current_frame_index, each_label),
                     #             contour_frame)  # count是當前第幾幀， i是當前幀數的第幾個框
-                # self.para_calculate(class_map, contour_frame, current_frame_HSV, different_frame_x,
-                #                     different_frame_y, each_frame_para_list, frame, labels_index,
-                #                     points_of_coordinates_in_label)
-                # threading.Thread(target=self.para_calculate, args=(class_map, contour_frame, current_frame_HSV, different_frame_x,
-                #                     different_frame_y, each_frame_para_list, frame, labels_index,
-                #                     points_of_coordinates_in_label)).start()
 
                 # TODO debug====
                 # print(para_dict)
@@ -566,7 +753,6 @@ class Refrigerant:
 
     # def para_calculate(self, class_map, contour_frame, current_frame_HSV, different_frame_x, different_frame_y,
     #                    each_frame_para_list, frame, labels_index, points_of_coordinates_in_label):
-
 
     def creat_event(self, log_path, event_path, file_name):
         with open(log_path + file_name + ".json", 'r') as fp:
@@ -752,7 +938,8 @@ class Refrigerant:
     def execute(self):
         video_list = [i for i in os.listdir(self.video_dir_path) if (i[-3::] == "mp4")]
         video_list = sorted(video_list)
-        report_title_list = ["environment", "camera", "date", "time", "detected_num", "event_video_length", "run_time","end_time"]
+        report_title_list = ["environment", "camera", "date", "time", "detected_num", "event_video_length", "run_time",
+                             "end_time"]
         self.save_report(report_title_list)
 
         for num, video_name in enumerate(video_list):
@@ -788,8 +975,8 @@ class Refrigerant:
 # cam = "B2"
 # path = "../ref/{}/{}/{}/".format(time, env, cam)
 
-video_dir_path = "../video/B513/"
-# video_dir_path = "../video/test/"
+# video_dir_path = "../video/B513/"
+video_dir_path = "../video/tmp/"
 refrigerant_system = Refrigerant(video_dir_path)
 refrigerant_system.execute()
 refrigerant_system.save_report([])

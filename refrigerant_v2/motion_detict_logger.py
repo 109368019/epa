@@ -78,7 +78,7 @@ for num, video_name in enumerate(video_list):
     video_date = re.findall('([^-]+)', video_list[num])[2]
     video_time = re.findall('([^-]+)', video_list[num])[3][:-4]
 
-    output_path = '../result/{}/{}/{}'.format(video_date, environment_name, camera_name)
+    output_path = '../ref/{}/{}/{}'.format(video_date, environment_name, camera_name)
     log_file_path = output_path + "/log/" + directory_name + ".json"
     video_red_path = output_path + "/video_red/"
     roi_csv_path = "./roi/{}.csv".format(video_list[num][:-20])

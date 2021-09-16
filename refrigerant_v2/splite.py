@@ -35,7 +35,7 @@ class Refrigerant:
         video_time = re.findall('([^-]+)', input_video_name)[3][:-4]
         print(environment_name, camera_name, video_date, video_time)
 
-        output_path = '../result/{}/{}/{}'.format(video_date, environment_name, camera_name)
+        output_path = '../ref/{}/{}/{}'.format(video_date, environment_name, camera_name)
         self.roi_csv_file_path = "./roi/{}.csv".format(input_video_name[:-20])
         self.log_path = output_path + "/log/"
         self.event_path = output_path + "/event/"
@@ -428,7 +428,7 @@ class Refrigerant:
                                     #   self.path_dict["roi_csv_file_path"], path_dict["file_name"])
             print("Creat event")
             self.creat_event(path_dict["log_path"], path_dict["event_path"], path_dict["file_name"])
-            print("Creat event video result")
+            print("Creat event video ref")
             self.creat_event_video_result(path_dict["input_video_path"], path_dict["log_path"], path_dict["event_path"],
                                           path_dict["output_video_path"], path_dict["file_name"])
 
@@ -437,7 +437,7 @@ class Refrigerant:
 # time = "20210705"
 # env = "綠環境"
 # cam = "B2"
-# path = "../result/{}/{}/{}/".format(time, env, cam)
+# path = "../ref/{}/{}/{}/".format(time, env, cam)
 
 video_dir_path = "../video/A15/"
 refrigerant_system = Refrigerant(video_dir_path)

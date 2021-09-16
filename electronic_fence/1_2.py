@@ -2,19 +2,22 @@
 
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
 import numba as nb
-# from matplotlib import pyplot as plt
-import time
-
 videoCapture = cv2.VideoCapture('2.mp4')
+import time
 
 
 def opening(image, kernel):
     image = cv2.erode(image, kernel, 1)
     image = cv2.dilate(image, kernel, 1)
     return image
+def mse(imageA, imageB):
 
+    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
+    err /= float(imageA.shape[0] * imageA.shape[1])
 
+    return err
 @nb.jit
 def counting(z, hsv, v_count):
     # 統計不同亮度值的數量
@@ -32,7 +35,21 @@ def up_counting(z, hsv, v_count, frameHSV):
             v_count[x, y, int(hsv[z, x, y, 2] * 255)] = v_count[x, y, int(hsv[z, x, y, 2] * 255)] - 1
             v_count[x, y, int(frameHSV[x, y, 2] * 255)] = v_count[x, y, int(frameHSV[x, y, 2] * 255)] + 1
     return v_count
+@nb.jit
+def n_binary(v_count,frameHSV,frameDiff2,k):
+    for x in range(480):
+        for y in range(720):
+            if v_count[x,y,int(frameHSV[x,y,2]*255)+1] <k and v_count[x,y,int(frameHSV[x,y,2]*255)-1]<k and  v_count[x,y,int(frameHSV[x,y,2]*255)]<k:
+                frameDiff2[x,y]=255
+    return frameDiff2
+@nb.jit
+def and_frame(save_frameDiff2,frameDiff2):
+    print_img = np.zeros((480, 720), np.uint8)
 
+    print_img = ((save_frameDiff2 / 255 + frameDiff2 / 255) / 2).astype('uint8')
+    # print(print_img)
+    print_img = print_img * 255
+    return print_img
 
 frame_count = int(videoCapture.get(cv2.CAP_PROP_FRAME_COUNT))
 count = 0
@@ -40,12 +57,12 @@ success, frame = videoCapture.read()  # 讀幀
 frame_x = frame.shape[0]        #480
 frame_y = frame.shape[1]        #720
 initFrame = frame  # 紀錄第一張Frame (RGB)
-seq = np.expand_dims(cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)[:, :, 2], axis=2)  # 建立seq(YUV)
+seq = np.expand_dims(cv2.cvtColor(frame,cv2.COLOR_RGB2HSV)[:,:,2], axis = 2)   #建立seq(HSV)
 start_frame = 3000
 arg_count = 1000  # 總統計數量
 v_count = np.zeros((frame_x, frame_y, 257), np.uint16)          #統計直方圖
 print_img = np.zeros((frame_x, frame_y), np.uint8)
-save_frameDiff2 = np.zeros((frame_x, frame_y), np.uint8)
+save_frameDiff2 = np.zeros((frame_x, frame_y,1), np.uint8)
 hsv = np.zeros((arg_count, frame_x, frame_y, 3), np.float32)
 statistics_index = 0
 
@@ -94,11 +111,17 @@ while success:
             k = 5  #
 
             ########################################################繪製二值化圖
-            for x in range(480):
-                for y in range(720):
-                    if v_count[x, y, int(frameHSV[x, y, 2] * 255) + 1] < k and v_count[
-                        x, y, int(frameHSV[x, y, 2] * 255) - 1] < k and v_count[x, y, int(frameHSV[x, y, 2] * 255)] < k:
-                        frameDiff2[x, y, 0] = 255
+            # for x in range(480):
+            #     for y in range(720):
+            #         if v_count[x, y, int(frameHSV[x, y, 2] * 255) + 1] < k and v_count[
+            #             x, y, int(frameHSV[x, y, 2] * 255) - 1] < k and v_count[x, y, int(frameHSV[x, y, 2] * 255)] < k:
+            #             frameDiff2[x, y, 0] = 255
+
+            xxx = frameDiff2[:, :]
+            yyy = np.take_along_axis(v_count, (frameHSV[:, :, 2] * 255).reshape(480, 720, 1).astype(int),
+                                     axis=2) < k
+            xxx[yyy.reshape(480, 720)] = 255
+            frameDiff2[:, :] = xxx
 
                     # v_count[x,y,int(frameHSV[x,y,2]*255)+1] <k and v_count[x,y,int(frameHSV[x,y,2]*255)-1]<k and  v_count[x,y,int(frameHSV[x,y,2]*255)]<k
             cv2.imshow('count', frameDiff2)
@@ -106,12 +129,16 @@ while success:
             # img= cv2.medianBlur(frameDiff2,3)#中值
             ########################################################做AND
             img = frameDiff2
-            for i in range(frame_x):
-                for j in range(frame_y):
-                    if save_frameDiff2[i, j] == frameDiff2[i, j]:
-                        print_img[i, j] = frameDiff2[i, j]
-            save_frameDiff2 = frameDiff2
+            # for i in range(frame_x):
+            #     for j in range(frame_y):
+            #         if save_frameDiff2[i, j] == frameDiff2[i, j]:
+            #             print_img[i, j] = frameDiff2[i, j]
+            # save_frameDiff2 = frameDiff2
             # img = cv2.dilate(img, None, iterations=1)
+            # img = print_img
+
+            print_img = and_frame(save_frameDiff2, frameDiff2)
+            save_frameDiff2 = frameDiff2
             img = print_img
             cv2.imshow('and', img)
 
