@@ -5,6 +5,8 @@ import warnings
 import numpy as np 
 import cv2 as cv2
 
+import pickle
+
 from lib.ErrorMessage import CustomError
 
 loading_bar_len = 20
@@ -43,7 +45,7 @@ class TrainDataLoader(object):
                     count_+=1
                     loaded_len = int(loading_bar_len*count_/data_count)
                     print("\rLoading class: {}, total:{} |{}{}|".format(class_, data_count, loaded_symbol*loaded_len, unloaded_symbol*(loading_bar_len-loaded_len)), end="")
-                    temp_data = plt.imread(os.path.join(data_path, pattern))
+                    temp_data = cv2.imread(os.path.join(data_path, pattern))
                     if(self.__channelChecker(temp_data)==-1):
                         temp_data = np.reshape(temp_data, (np.shape(temp_data)[0], np.shape(temp_data)[1], 1))
                     self.raw_data[class_].append(temp_data)
@@ -72,7 +74,8 @@ class TrainDataLoader(object):
                     count_+=1
                     processed_len = int(loading_bar_len*count_/data_len)
                     print("\rReshape class: {}, total:{} |{}{}|".format(class_, data_len, loaded_symbol*processed_len, unloaded_symbol*(loading_bar_len-processed_len)), end="")
-                    self.reshaped_data[class_].append(cv2.resize(data, target_shape, interpolation=cv2.INTER_CUBIC))
+                    resized_data = cv2.resize(data, target_shape, interpolation=cv2.INTER_NEAREST)
+                    self.reshaped_data[class_].append(resized_data)
                 print("Done.")
                 
         return self.reshaped_data
@@ -98,6 +101,7 @@ class TrainDataLoader(object):
                     print("Done.")
                     
             return normalized_data
+
         if(factor==None):
             self.normalized_data = n(0, 255)
         else:
@@ -110,8 +114,24 @@ class TrainDataLoader(object):
             keys.sort()
             if(keys==min_max):
                 self.normalized_data = n(factor[min_max[1]], (factor[min_max[0]]-factor[min_max[1]]))
+
+                with open("normalization_factor.pkl", "wb") as f:
+                    nf = {
+                        "min":factor[min_max[1]], 
+                        "max":factor[min_max[0]]
+                    }
+                    pickle.dump(nf, f)
+
             elif(keys==z_score):
-                self.normalized_data = n(factor[z_score[1]], factor[z_score[0]])
+                self.normalized_data = n(factor[z_score[0]], factor[z_score[1]])
+
+                with open("normalization_factor.pkl", "wb") as f:
+                    nf = {
+                        "mean":factor[z_score[0]], 
+                        "std":factor[z_score[1]]
+                    }
+                    pickle.dump(nf, f)
+
             else:
                 raise CustomError("Factor not available.")
         

@@ -33,13 +33,29 @@ class ModelTrainer(object):
         self.__dirChecker(self.default_model_path)
 
     def __modelDefinition(self): # define your model
-        input_layer = L.Input(shape=(28,28,3))
-        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(input_layer)
+        input_layer = L.Input(shape=(*self.data_size,3))
+
+        hiden_layer = L.Conv2D(filters=256, kernel_size=7, activation="relu", padding="same")(input_layer)
+        hiden_layer = L.Conv2D(filters=256, kernel_size=5, activation="relu", padding="same")(hiden_layer)
+        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu", padding="same")(hiden_layer)
+        hiden_layer = L.BatchNormalization()(hiden_layer)
+        high_way = L.Conv2D(filters=256, kernel_size=3, activation="relu", padding="same")(input_layer)
+        hiden_layer = L.Concatenate()([hiden_layer, high_way])
+        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
+
         hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(hiden_layer)
+        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
+        hiden_layer = L.BatchNormalization()(hiden_layer)
+
         hiden_layer = L.Conv2D(filters=512, kernel_size=3, activation="relu")(hiden_layer)
-        hiden_layer = L.Conv2D(filters=512, kernel_size=3, activation="relu")(hiden_layer)
+        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
+        hiden_layer = L.BatchNormalization()(hiden_layer)
+
+        hiden_layer = L.Conv2D(filters=32, kernel_size=1, activation="relu")(hiden_layer)
+
         hiden_layer = L.Flatten()(hiden_layer)
-        output_layer = L.Dense(units=3, activation="sigmoid")(hiden_layer)
+        output_layer = L.Dense(units=2, activation="sigmoid")(hiden_layer)
+
         model = K.Model(inputs=input_layer, outputs=output_layer)
         return model
 
@@ -78,8 +94,9 @@ class ModelTrainer(object):
 
         return self.model
 
-    def loadTrainingData(self, root_path:str, factor:dict=None):
+    def loadTrainingData(self, root_path:str, factor:dict=None, class_list:list=None):
         tdl = TrainDataLoader(root_path)
+        tdl.class_names = class_list
         tdl.load()
         tdl.resize(self.data_size)
         tdl.normalization(factor=factor)
@@ -111,7 +128,11 @@ class ModelTrainer(object):
         self.y_test = np.eye(count_)[self.y_test]
 
         return self.x_train, self.x_test, self.y_train, self.y_test
-        
+    
+    def save(self):
+        model_path = os.path.join(self.default_model_path, self.model_version+"_trained")
+        self.model.save(model_path, save_format="h5")
+
     # TODO reload training status
     # def __parameterLoader(self):
     #     if(os.path.isfile(self.parameter_path)):
