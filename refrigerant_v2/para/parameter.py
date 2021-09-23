@@ -14,3 +14,5 @@ class Parameter(object):
 
         # self.gsussian_sigmaX = 3
         self.gaussian_kernal_size = (3, 3)
+        self.predict_class = 1
+

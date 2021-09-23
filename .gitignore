@@ -2,3 +2,8 @@
 ./video
 ./test_svm_file_th1
 ./test_file
+./refrigerant_v2/event
+./refrigerant_v2/log
+output
+./refrigerant_v2/model
+*.h5

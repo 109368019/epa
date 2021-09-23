@@ -35,23 +35,25 @@ class ModelTrainer(object):
     def __modelDefinition(self): # define your model
         input_layer = L.Input(shape=(*self.data_size,3))
 
-        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(input_layer)
+        hiden_layer = L.Conv2D(filters=256, kernel_size=7, activation="relu", padding="same")(input_layer)
+        hiden_layer = L.Conv2D(filters=256, kernel_size=5, activation="relu", padding="same")(hiden_layer)
+        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu", padding="same")(hiden_layer)
+        hiden_layer = L.BatchNormalization()(hiden_layer)
+        high_way = L.Conv2D(filters=256, kernel_size=3, activation="relu", padding="same")(input_layer)
+        hiden_layer = L.Concatenate()([hiden_layer, high_way])
+        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
+
+        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(hiden_layer)
         hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
         hiden_layer = L.BatchNormalization()(hiden_layer)
 
-        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(hiden_layer)
-        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
-
-        hiden_layer = L.Conv2D(filters=256, kernel_size=3, activation="relu")(hiden_layer)
-        hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
-
         hiden_layer = L.Conv2D(filters=512, kernel_size=3, activation="relu")(hiden_layer)
         hiden_layer = L.MaxPooling2D(pool_size=(2, 2))(hiden_layer)
+        hiden_layer = L.BatchNormalization()(hiden_layer)
 
-        # hiden_layer = L.Conv2D(filters=32, kernel_size=1, activation="relu")(hiden_layer)
+        hiden_layer = L.Conv2D(filters=32, kernel_size=1, activation="relu")(hiden_layer)
 
         hiden_layer = L.Flatten()(hiden_layer)
-
         output_layer = L.Dense(units=2, activation="sigmoid")(hiden_layer)
 
         model = K.Model(inputs=input_layer, outputs=output_layer)

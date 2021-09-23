@@ -6,13 +6,15 @@ import cv2
 import joblib
 import numpy as np
 from para.parameter import Parameter
+from lib.Preprocessor import Preprocessor
 import csv
 import numba as nb
+import tensorflow as tf 
 from sklearn.cluster import DBSCAN
 import json
 import threading
 
-#關閉warnings
+# 關閉warnings
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -24,10 +26,15 @@ class Refrigerant:
         self.statistics_index = 0
         self.statistics_channel = 2
         self.para = Parameter()
+        self.preprocessor = Preprocessor(shape=(64,64))
         self.path_dict = dict()
         self.report_list = []
-        self.svm_model = joblib.load('clf3.pkl')
-        self.DCT_LEVEL = 32
+        self.model = tf.keras.models.load_model("model/ResNet_2_class_red_trained.h5")
+        # self.model.summary()
+        # sys.exit()
+        # DVT parameter 
+        # self.svm_model = joblib.load('clf3.pkl')
+        # self.DCT_LEVEL = 32
 
     def creat_path(self, input_video_name: str):
         # print(self.video_dir_path)
@@ -48,8 +55,8 @@ class Refrigerant:
         self.report_list.append(video_date)
         self.report_list.append(video_time[:-4])
 
-        # output_path = '../ref/{}/{}/{}'.format(video_date, environment_name, camera_name)
-        output_path = '../test_svm_file_th1/{}/{}/{}'.format(video_date, environment_name, camera_name)
+        # output_path = '../result_cnn_confidence03/{}/{}/{}'.format(video_date, environment_name, camera_name)
+        output_path = '../output/{}/{}/{}'.format(video_date, environment_name, camera_name)
         print("output path: ", output_path)
         self.roi_csv_file_path = "./roi/{}.csv".format(input_video_name[:-20])
         self.log_path = output_path + "/log/"
@@ -438,26 +445,95 @@ class Refrigerant:
                     if(len(different_points_coordinates)!=0):
                         # TODO try 8-connect
 
-                        # clustering = DBSCAN(
-                        #     eps=self.para.eps_value, min_samples=self.para.min_samples_size).fit(
-                        #     different_points_coordinates)
-
-                        # all_labels_array = np.setdiff1d(np.unique(clustering.labels_),
-                        #                                 np.array([-1]))  # 分群的結果可能會有 -1 類別(無歸屬)，此類別須排除
-
-                        # each_frame_para_list = []
-                        # H = current_frame_HSV[:, :, 0]
-                        # S = current_frame_HSV[:, :, 1]
-                        # V = current_frame_HSV[:, :, 2]
-                        # total_avg_value = V.mean()
-                        # total_avg_sat = S.mean()
-
+                        
                         # self.cal_para(all_labels_array, clustering, contour_frame, current_frame_HSV,
                         #               current_frame_index, different_frame_x, different_frame_y, each_frame_para_list,
                         #               frame, log_file, total_avg_sat, total_avg_value)
                         post_frame = self.window_hsv[self.statistics_index - 1, :, :, 2]
-                        threading.Thread(target=self.cal_para,
-                                         args=(different_points_coordinates, contour_frame, current_frame_HSV, current_frame_index, different_frame_x, different_frame_y, frame, log_file, post_frame)).start()
+                        
+                        # threading.Thread(target=self.cal_para,
+                        #                  args=(different_points_coordinates, contour_frame, current_frame_HSV, current_frame_index, different_frame_x, different_frame_y, frame, log_file, post_frame)).start()
+                        
+                        clustering = DBSCAN(
+                            eps=self.para.eps_value, min_samples=self.para.min_samples_size).fit(
+                            different_points_coordinates)
+
+                        all_labels_array = np.setdiff1d(np.unique(clustering.labels_),
+                                                        np.array([-1]))  # 分群的結果可能會有 -1 類別(無歸屬)，此類別須排除
+
+                        each_frame_para_list = []
+                        H = current_frame_HSV[:, :, 0]
+                        S = current_frame_HSV[:, :, 1]
+                        V = current_frame_HSV[:, :, 2]
+                        total_avg_value = V.mean()
+                        total_avg_sat = S.mean()
+                        for each_label in all_labels_array:
+                            labels_index = np.where(clustering.labels_ == each_label)
+                            class_map = np.zeros((current_frame_HSV.shape[0], current_frame_HSV.shape[1]))
+                            points_of_coordinates_in_label = [
+                                (different_frame_x[each_point_index], different_frame_y[each_point_index]) for
+                                each_point_index in labels_index]
+
+                            for points_x, points_y in points_of_coordinates_in_label:
+                                class_map[points_x, points_y] = 1
+
+                            # criteria condition
+                            class_map_num = len(points_of_coordinates_in_label[0][0])
+                            class_map_criteria = class_map_num > self.para.class_map_num_value
+
+                            if (class_map_criteria):
+                                obj_brighten = False
+                                # try:
+                                if((current_frame_HSV[:, :, 2][class_map == 1].mean() - 
+                                    post_frame[class_map == 1].mean()) > 0):
+                                    obj_brighten = True
+                                # except:
+                                #     obj_brighten = False
+                                # print(self.statistics_index)
+                                obj_avg_value = current_frame_HSV[:, :, 2][class_map == 1].mean()
+                                obj_avg_saturation = current_frame_HSV[:, :, 1][class_map == 1].mean()
+                                obj_std_value = current_frame_HSV[:, :, 2][class_map == 1].std()
+                                obj_std_saturation = current_frame_HSV[:, :, 1][class_map == 1].std()
+                                obj_min_x = min(points_of_coordinates_in_label[0][0])
+                                obj_max_x = max(points_of_coordinates_in_label[0][0])
+                                obj_min_y = min(points_of_coordinates_in_label[0][1])
+                                obj_max_y = max(points_of_coordinates_in_label[0][1])
+                                predict_pic = contour_frame[obj_min_x:obj_max_x+1, obj_min_y:obj_max_y+1]
+                                predict_pic = self.preprocessor.resize(predict_pic)
+                                predict_pic = self.preprocessor.normalization(predict_pic)
+                                predict_pic = np.array([predict_pic])
+                                predict_result = "None"
+                                
+                                if obj_avg_value > self.para.mean_value_limit and obj_avg_saturation < self.para.mean_satuation_limit:
+                                    # predict_result = int(np.argmax(self.model(predict_pic)[0]))
+                                    predict_result = 1 if self.model(predict_pic)[0][1] > 0.1 else 0  # index 1 超過0.3則當作冷媒
+                                    
+                                    if predict_result == 1:
+                                        cv2.rectangle(contour_frame, (
+                                            max(different_frame_y[labels_index]), max(different_frame_x[labels_index])), (
+                                                        min(different_frame_y[labels_index]),
+                                                        min(different_frame_x[labels_index])),
+                                                    (0, 255, 0), 2)
+                                    elif predict_result == 0:
+                                        cv2.rectangle(contour_frame, (
+                                            max(different_frame_y[labels_index]), max(different_frame_x[labels_index])), (
+                                                        min(different_frame_y[labels_index]),
+                                                        min(different_frame_x[labels_index])),
+                                                    (255, 0, 0), 2)
+
+                                para_dict = {"obj_min_x": int(obj_min_x), "obj_max_x": int(obj_max_x),
+                                            "obj_min_y": int(obj_min_y), "obj_max_y": int(obj_max_y),
+                                            "obj_avg_value": obj_avg_value, "obj_avg_sat": obj_avg_saturation,
+                                            "obj_std_value": obj_std_value, "obj_std_sat": obj_std_saturation,
+                                            "obj_brighten": obj_brighten, "predict": predict_result}
+                                each_frame_para_list.append(para_dict)
+
+                        if len(each_frame_para_list) > 0:
+                            log_file.update(
+                                {current_frame_index: {"total_avg_value": total_avg_value,
+                                                    "total_avg_sat": total_avg_sat,
+                                                    "obj_count": len(each_frame_para_list),
+                                                    "obj_data": each_frame_para_list}})
                     else:
                         pass
 
@@ -503,7 +579,6 @@ class Refrigerant:
             # criteria condition
             class_map_num = len(points_of_coordinates_in_label[0][0])
             class_map_criteria = class_map_num > self.para.class_map_num_value
-            # TODO Thread
 
             if (class_map_criteria):
                 obj_brighten = False
@@ -522,12 +597,21 @@ class Refrigerant:
                 obj_max_x = max(points_of_coordinates_in_label[0][0])
                 obj_min_y = min(points_of_coordinates_in_label[0][1])
                 obj_max_y = max(points_of_coordinates_in_label[0][1])
-                svm_feature = self.generate_svm_feature(frame[obj_min_x:obj_max_x, obj_min_y:obj_max_y])
+                # svm_feature = self.generate_svm_feature(frame[obj_min_x:obj_max_x, obj_min_y:obj_max_y])
+                predict_pic = contour_frame[obj_min_x:obj_max_x+1, obj_min_y:obj_max_y+1]
+                predict_pic = self.preprocessor.resize(predict_pic)
+                predict_pic = self.preprocessor.normalization(predict_pic)
+                predict_pic = np.array([predict_pic])
+                # print(predict_pic)
+                # print(predict_pic.shape)
+                # print(np.shape([predict_pic]))
+                # print(self.model.predict([predict_pic]))
+                
                 para_dict = {"obj_min_x": int(obj_min_x), "obj_max_x": int(obj_max_x),
                              "obj_min_y": int(obj_min_y), "obj_max_y": int(obj_max_y),
                              "obj_avg_value": obj_avg_value, "obj_avg_sat": obj_avg_saturation,
                              "obj_std_value": obj_std_value, "obj_std_sat": obj_std_saturation,
-                             "obj_brighten": obj_brighten, "svm_predict": self.svm_predict(svm_feature)}
+                             "obj_brighten": obj_brighten, "svm_predict": np.argmax(self.model(predict_pic)[0])}
                 each_frame_para_list.append(para_dict)
                 if obj_avg_value > self.para.mean_value_limit and obj_avg_saturation < self.para.mean_satuation_limit and obj_brighten:
                     # cv2.imwrite('pic/pic_%d_%d.png' % (current_frame_index, each_label),
@@ -585,8 +669,7 @@ class Refrigerant:
     # def para_calculate(self, class_map, contour_frame, current_frame_HSV, different_frame_x, different_frame_y,
     #                    each_frame_para_list, frame, labels_index, points_of_coordinates_in_label):
 
-
-    def creat_event(self, log_path, event_path, file_name):
+    def creat_event_old(self, log_path, event_path, file_name):
         with open(log_path + file_name + ".json", 'r') as fp:
             log = json.load(fp)
 
@@ -626,8 +709,12 @@ class Refrigerant:
                     data_temp = obj_data[i]
                     value_criteria = data_temp["obj_avg_value"] > self.para.mean_value_limit
                     sat_criteria = data_temp["obj_avg_sat"] < self.para.mean_satuation_limit
-                    svm_criteria = data_temp["svm_predict"] == "ref"
-                    if (value_criteria and sat_criteria and data_temp["obj_brighten"] and svm_criteria):
+                    predict_criteria = data_temp["predict"] == self.para.predict_class
+                    # predict_criteria = True
+
+                    # if (value_criteria and sat_criteria and data_temp["obj_brighten"] and predict_criteria):
+                    if (value_criteria and sat_criteria and predict_criteria):
+
                         new_obj_data.append(data_temp)
 
                 for i in range(0, len(event_temp)):
@@ -687,10 +774,143 @@ class Refrigerant:
                     if event_len > MINI_LENGTH:
                         event_real.append([merge_event_temp[i][0], frame_num - stop_event_buffer])
 
+        with open(event_path + file_name + ".csv", 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for i in event_real:
+                writer.writerow(i)
+
+    def creat_event(self, log_path, event_path, file_name):
+        with open(log_path + file_name + ".json", 'r') as fp:
+            log = json.load(fp)
+
+        if len(log.keys()) > 0:
+            last_num = int(list(log.keys())[-1])
+            first_num = int(list(log.keys())[0])
+        else:
             with open(event_path + file_name + ".csv", 'w', newline='') as csvfile:
+                # print("no event")
                 writer = csv.writer(csvfile)
-                for i in event_real:
-                    writer.writerow(i)
+            return
+
+        # print(first_num)
+        # print(last_num)
+        #讀log將所有事件分為紅框與綠框並標記該座標條件list
+        #判斷事件條件與物件條件是否有交集
+        #若有交集則延續事件，若有交集的物件為紅框活躍度-1並繼續追蹤，若為綠框則將活躍度重置
+        #若事件與紅綠框都沒交集則結束事件
+        #根據最後的活躍度減去事件幀數
+        #若事件長度小於MINI_LENGTH則刪除該事件
+        #若紅框沒有與任何事件交集則忽略
+        #若綠框沒有與任何事件交集則新增事件
+
+        MINI_LENGTH = 2
+        stop_event_buffer = 7
+        non_event_count = 0
+
+        event_real = []  # [[start_frame,end_frame],[]...]
+        event_temp = []  # [[start_frame_num, non_event_count, [present condition list],[next condition list],End_flag],...] 當 non_event_count >= 2 pop to event_real
+        condition = 1
+        roi_x = 240      # 需要改成讀取影片長寬
+        roi_y = 360
+        scope = 20       # 將影像量化成幾格
+        scope_x = roi_x // scope
+        scope_y = roi_y // scope
+        print(scope_x,scope_y)
+        for frame_num in range(first_num, last_num + 1):
+            frame_data = log.get(str(frame_num), "None")
+            #進度條
+            print("\r[Creat_Event] |{}{}| {:>5.0f}/{:>5.0f} - {:>3.0f}%".format(
+                '█' * int((frame_num - first_num + 1) * 20 / (last_num + 1 - first_num)),
+                ' ' * (20 - int((frame_num - first_num + 1) * 20 / (last_num + 1 - first_num))), frame_num,
+                last_num, ((frame_num - first_num) / (last_num + 1 - first_num)) * 100), end="")
+            if frame_data != "None":
+                # 讀取動態物
+                obj_data = frame_data.get("obj_data", "None")
+                new_obj_data = []                  
+                # common condition
+                for i in range(0, len(obj_data)):
+                    #將紅框與綠框標記
+                    #並將其座標清單紀錄
+                    obj_loc = []
+                    data_temp = obj_data[i]
+                    value_criteria = data_temp["obj_avg_value"] > self.para.mean_value_limit
+                    sat_criteria = data_temp["obj_avg_sat"] < self.para.mean_satuation_limit
+                    predict_criteria = data_temp["predict"] == self.para.predict_class
+                    # predict_criteria = True
+
+                    for i in range((data_temp['obj_min_x']//scope_x)-1,(data_temp['obj_max_x']//scope_x)+1):
+                       for j in range((data_temp['obj_min_y']//scope_y)-1,(data_temp['obj_max_y']//scope_y)+1): 
+                           obj_loc.append(str(i) + ',' + str(j))
+                    if (value_criteria and sat_criteria and data_temp["obj_brighten"] and predict_criteria):
+                        ref_tag = True
+                    else:
+                        ref_tag = False
+                    data_temp.update({"ref_tag":ref_tag})
+                    data_temp.update({"obj_loc":obj_loc})
+                    data_temp.update({"use_or_not":False})
+                    new_obj_data.append(data_temp)
+
+                for i in range(0, len(event_temp)): #若沒有以存在的暫存事件則跳過
+                    event_loc = event_temp[i][2]
+                    event_flag = False      
+                    next_condition_save = []
+                    for j in range(0, len(new_obj_data)):
+                        
+                        obj_loc = new_obj_data[j]["obj_loc"]    #讀取動態物座標清單
+                        ref_tag = new_obj_data[j]["ref_tag"]    #讀取紅框綠框標記
+                        
+                        if len(set(event_loc) & set(obj_loc)) >= 1: #若為同事件之動態物
+                            loc_condition = True
+                        else:                                       #反之
+                            loc_condition = False
+                        
+                        if loc_condition:                           
+                            new_obj_data[j]["use_or_not"] = True    #將動態物標記為包含再某事件內
+                            next_condition_save = list(set(next_condition_save) | set(obj_loc)) #新增下幀座標清單 （動態物聯集）
+                            if ref_tag:
+                                event_flag = True                   #該動態物是否為綠框
+                    
+                    event_temp[i][3]= next_condition_save
+
+                    if event_flag == True:
+                        event_temp[i][1] = 0
+                    else:
+                        event_temp[i][1] += 1
+                # if new obj_event add event_temp
+                # 有新物件需要新增事件
+                for i in range(0, len(new_obj_data)):
+                    now_condition_save = []
+                    next_condition_save = []
+                    now_data = new_obj_data[i]
+                    if (now_data["ref_tag"]==True) and (now_data["use_or_not"]== False):
+                        next_condition_save = now_data["obj_loc"]
+                        event_temp.append([frame_num, 0, now_condition_save,next_condition_save,False]) 
+
+                        # save_event = new_obj_data[i]
+                #將 下幀的條件載入 並清空
+                for i in range(0, len(event_temp)):
+                    event_temp[i][2]=event_temp[i][3]
+                    event_temp[i][3]=[]
+            #若無動態物則全部事件非活躍+1
+            else:
+                for i in range(0, len(event_temp)):
+                    event_temp[i][1] += 1
+                    event_temp[i][2]=event_temp[i][3]
+                    event_temp[i][3]=[]
+            j=0
+            #判斷事件是否結束、是否符合條件。
+            for i in range(0, len(event_temp)):
+                if event_temp[i-j][1] >= stop_event_buffer:
+                    event_len = frame_num - event_temp[i-j][0] + 1 - stop_event_buffer
+                    if event_len > MINI_LENGTH:
+                        event_real.append([event_temp[i-j][0],frame_num-stop_event_buffer])
+                    del event_temp[i-j]
+                    j += 1
+        #寫入檔案
+        with open(event_path + file_name + ".csv", 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for i in event_real:
+                writer.writerow(i)
 
     def creat_event_video_result(self, input_video_path, log_path, event_path, output_video_path, file_name,
                                  save_video=True):
@@ -747,6 +967,8 @@ class Refrigerant:
                             data_temp = obj_data[j]
                             value_criteria = data_temp["obj_avg_value"] > self.para.mean_value_limit
                             sat_criteria = data_temp["obj_avg_sat"] < self.para.mean_satuation_limit
+                            # predict_criteria = data_temp["predict"] == self.predict_class
+
                             if (value_criteria and sat_criteria):
                                 new_obj_data.append(data_temp)
                         for j in range(0, len(new_obj_data)):
@@ -780,13 +1002,13 @@ class Refrigerant:
             path_dict = self.creat_path(video_name)
             print("[2] Motion detict logger start")
             self.motion_detict_logger_test(path_dict["input_video_path"], path_dict["log_path"],
-                                           self.path_dict["roi_csv_file_path"], path_dict["file_name"], False)
+                                           self.path_dict["roi_csv_file_path"], path_dict["file_name"], True)
             end_time = time.time()
             print(" time: {}s".format(round(end_time - start_time, 2)), end="")
             print()
 
             print("[3] Creat event")
-            self.creat_event(path_dict["log_path"], path_dict["event_path"], path_dict["file_name"])
+            self.creat_event_old(path_dict["log_path"], path_dict["event_path"], path_dict["file_name"])
             print()
 
             print("[4] Creat event video ref")
@@ -806,8 +1028,8 @@ class Refrigerant:
 # cam = "B2"
 # path = "../ref/{}/{}/{}/".format(time, env, cam)
 
-video_dir_path = "../video/"
-# video_dir_path = "../video/test/"
+# video_dir_path = "../video/"
+video_dir_path = "../video/test/"
 refrigerant_system = Refrigerant(video_dir_path)
 refrigerant_system.execute()
 refrigerant_system.save_report([])

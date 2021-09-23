@@ -2,7 +2,8 @@
 import numpy as np
 from tensorflow.python.autograph.operators.py_builtins import all_
 np.random.seed(1210)
-# import os
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # import sys
 import pickle
 import matplotlib.pyplot as plt
@@ -25,7 +26,7 @@ solveCudnnError.diable_tensorflow_warning()
 
 if __name__ == "__main__":
     factor = {"min":0, "max":255}
-    mt = ModelTrainer("ResNet_2_class_red", (64,64))
+    mt = ModelTrainer("CNN_2_class_red", (64,64))
     mt.loadTrainingData(root_path="train_data", factor=factor, class_list=["neg_red", "ref_red"])
     print(mt.x_train.mean(), mt.x_train.std(), mt.x_train.min(), mt.x_train.max())
     mt.build()
